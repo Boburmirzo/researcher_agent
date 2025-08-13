@@ -1,11 +1,7 @@
-import os
-
 import streamlit as st
 from researcher import (
-    create_memory_agent,
-    create_research_agent,
+    Researcher,
     create_user_database_path,
-    init_memori,
     validate_openai_api_key,
     validate_exa_api_key,
 )
@@ -51,6 +47,9 @@ def initialize_session_state():
     if "exa_api_key" not in st.session_state:
         st.session_state.exa_api_key = ""
 
+    if "researcher" not in st.session_state:
+        st.session_state.researcher = None
+
     if "research_agent" not in st.session_state:
         st.session_state.research_agent = None
 
@@ -62,9 +61,6 @@ def initialize_session_state():
 
     if "memory_messages" not in st.session_state:
         st.session_state.memory_messages = []
-
-    if "memori" not in st.session_state:
-        st.session_state.memori = None
 
 
 def show_login_form():
@@ -140,28 +136,21 @@ def show_login_form():
             st.session_state.openai_api_key = openai_api_key.strip()
             st.session_state.exa_api_key = exa_api_key.strip()
 
-            # Initialize agents
+            # Initialize researcher with memory
             try:
                 database_path = create_user_database_path(username.strip(), "streamlit")
 
-                # Set API keys in environment variables
-                os.environ["OPENAI_API_KEY"] = openai_api_key.strip()
-                os.environ["EXA_API_KEY"] = exa_api_key.strip()
-
-                with st.spinner("Initializing Memory System..."):
-                    # Initialize Memori once for this user session
-                    st.session_state.memori = init_memori(database_path)
-
-                with st.spinner("Initializing Research Agent with Memory..."):
-                    st.session_state.research_agent = create_research_agent(
-                        memori=st.session_state.memori,
+                with st.spinner("Initializing Research Assistant with Memory..."):
+                    st.session_state.researcher = Researcher(
                         database_path=database_path,
+                        openai_api_key=openai_api_key.strip(),
+                        exa_api_key=exa_api_key.strip(),
                     )
-
-                with st.spinner("Initializing Memory Assistant..."):
-                    st.session_state.memory_agent = create_memory_agent(
-                        memori=st.session_state.memori,
-                        database_path=database_path,
+                    st.session_state.research_agent = (
+                        st.session_state.researcher.get_research_agent()
+                    )
+                    st.session_state.memory_agent = (
+                        st.session_state.researcher.get_memory_agent()
                     )
 
                 st.session_state.authenticated = True
@@ -293,7 +282,9 @@ def show_main_app():
             with st.chat_message("assistant"):
                 with st.spinner("🔍 Conducting research and searching memory..."):
                     try:
-                        response = st.session_state.research_agent.run(research_prompt)
+                        response = st.session_state.researcher.run_agent_with_memory(
+                            st.session_state.research_agent, research_prompt
+                        )
                         st.markdown(response.content)
                         st.session_state.research_messages.append(
                             {"role": "assistant", "content": response.content}
@@ -344,7 +335,11 @@ def show_main_app():
                 with st.chat_message("assistant"):
                     with st.spinner("🔍 Conducting research and searching memory..."):
                         try:
-                            response = st.session_state.research_agent.run(quick_prompt)
+                            response = (
+                                st.session_state.researcher.run_agent_with_memory(
+                                    st.session_state.research_agent, quick_prompt
+                                )
+                            )
                             st.markdown(response.content)
                             st.session_state.research_messages.append(
                                 {"role": "assistant", "content": response.content}
